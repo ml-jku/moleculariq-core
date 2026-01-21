@@ -202,11 +202,11 @@ This package is part of the MolecularIQ ecosystem:
 
 | Repository | Purpose |
 |------------|---------|
-| **[moleculariq](https://github.com/ml-jku/moleculariq)** | Central hub for the MolecularIQ benchmark ecosystem |
-| **[moleculariq-leaderboard](https://huggingface.co/spaces/ml-jku/molecularIQ_leaderboard)** | Leaderboard: HuggingFace space for results and submissions |
-| **[moleculariq-core](#moleculariq-core)** | Core library: question generation, property computation, evaluation, molecule pools |
-| **[moleculariq-benchmark](https://github.com/ml-jku/moleculariq-benchmark)** | Dataset creation pipeline |
-| **[moleculariq-eval](https://github.com/ml-jku/moleculariq-eval)** | Evaluation code: lm-eval-harness integration |
+| **[moleculariq](https://anonymous.4open.science/r/moleculariq-EE40/README.md)** | Central hub for the MolecularIQ benchmark ecosystem |
+| **moleculariq-leaderboard]** | Leaderboard: HuggingFace space for results and submissions; please see supplementary material |
+| **[moleculariq-core](https://anonymous.4open.science/r/moleculariq-core-2F02/README.md)** | Core library: question generation, property computation, evaluation, molecule pools |
+| **[moleculariq-benchmark](https://anonymous.4open.science/r/moleculariq-benchmark-5A40/README.md)** | Dataset creation pipeline |
+| **moleculariq-eval** | Evaluation code: lm-eval-harness integration: please see supplementary material |
 
 ## License
 
@@ -216,6 +216,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**[Back to Top](#moleculariq-core)**
+**[Back to Top]([#moleculariq-core](https://anonymous.4open.science/r/moleculariq-core-2F02/README.md))**
 
 </div>
