@@ -216,6 +216,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**[Back to Top]([#moleculariq-core](https://anonymous.4open.science/r/moleculariq-core-2F02/README.md))**
+**[Back to Top]([#moleculariq-core](https://anonymous.4open.science/r/moleculariq-core-2F02/README.md)**
 
 </div>
