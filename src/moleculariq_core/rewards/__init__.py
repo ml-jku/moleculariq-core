@@ -75,7 +75,7 @@ def chemical_reward(
     task_type = task_type.lower().replace('-', '_')
 
     # Route to appropriate reward function
-    if task_type in ['single_count', 'count']:
+    if task_type in ['single_count']:
         if target is None:
             raise ValueError("Target required for count tasks")
         return single_count_reward(
@@ -84,7 +84,7 @@ def chemical_reward(
             return_details=return_details
         )
 
-    elif task_type in ['multi_count', 'multi_count_dict', 'multiple_count']:
+    elif task_type in ['multi_count', 'multi_count_dict', 'multiple_count', 'count']:
         if target is None:
             raise ValueError("Target required for multi-count tasks")
         return multi_count_dict_reward(
@@ -93,7 +93,7 @@ def chemical_reward(
             return_details=return_details
         )
 
-    elif task_type in ['single_index', 'index', 'single_index_identification']:
+    elif task_type in ['single_index', 'single_index_identification']:
         if target is None:
             raise ValueError("Target required for index tasks")
         return single_index_reward(
@@ -102,7 +102,7 @@ def chemical_reward(
             return_details=return_details
         )
 
-    elif task_type in ['multi_index', 'multi_index_identification', 'multiple_index']:
+    elif task_type in ['multi_index', 'multi_index_identification', 'multiple_index', 'index']:
         if target is None:
             raise ValueError("Target required for multi-index tasks")
         return multi_index_identification_reward(
