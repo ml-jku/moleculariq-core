@@ -163,7 +163,7 @@ class TestMultiIndexReward:
         assert score == 1.0
 
     def test_partial_correct(self):
-        """Partial correct returns partial score."""
+        """Partial correct returns 0.0 (strict all-or-nothing)."""
         score = multi_index_identification_reward(
             predicted={
                 "ring_indices": [0, 1, 2],
@@ -174,7 +174,7 @@ class TestMultiIndexReward:
                 "carbon_indices": [0, 1]
             }
         )
-        assert 0.0 < score < 1.0
+        assert score == 0.0
 
 
 class TestConstraintReward:
@@ -524,3 +524,53 @@ class TestDispatcherAliases:
             constraints=[{"type": "ring_count", "operator": "=", "value": 1}]
         )
         assert score > 0.0
+
+
+class TestDuplicateKeyDetection:
+    """Tests for duplicate key handling in reward functions."""
+
+    def test_json_duplicate_keys_count_returns_zero(self):
+        """JSON with duplicate keys in count task returns 0."""
+        score = multi_count_dict_reward(
+            predicted='{"carbon": 5, "carbon": 6}',
+            target={"carbon_count": 5}
+        )
+        assert score == 0.0
+
+    def test_string_format_duplicate_keys_count_returns_zero(self):
+        """String with duplicate keys in count task returns 0."""
+        score = multi_count_dict_reward(
+            predicted="carbon:5, carbon:6",
+            target={"carbon_count": 5}
+        )
+        assert score == 0.0
+
+    def test_normalized_duplicate_keys_count_returns_zero(self):
+        """Different keys normalizing to same key in count task returns 0."""
+        score = multi_count_dict_reward(
+            predicted={"carbon atoms": 5, "carbons": 6},
+            target={"carbon_count": 5}
+        )
+        assert score == 0.0
+
+    def test_index_normalized_duplicate_keys_returns_zero(self):
+        """Index task with normalized duplicates returns 0."""
+        score = multi_index_identification_reward(
+            predicted={"ring indices": [0, 1], "ring_indices": [2, 3]},
+            target={"ring_indices": [0, 1]}
+        )
+        assert score == 0.0
+
+    def test_no_duplicate_keys_still_works(self):
+        """Ensure normal cases without duplicates still work."""
+        score = multi_count_dict_reward(
+            predicted={"carbon_count": 5},
+            target={"carbon_count": 5}
+        )
+        assert score == 1.0
+
+        score = multi_index_identification_reward(
+            predicted={"ring_indices": [0, 1]},
+            target={"ring_indices": [0, 1]}
+        )
+        assert score == 1.0

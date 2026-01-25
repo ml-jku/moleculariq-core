@@ -5,12 +5,42 @@ Ground truth is provided in the target dictionary - no recalculation.
 
 import json
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from .utils import are_same_molecular_formula, parse_natural_language_property
 
 
 _NUMERIC_TOLERANCE = 1e-6
+
+
+def _parse_json_with_duplicate_check(text: str) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """Parse JSON and detect if duplicate keys exist.
+
+    Returns:
+        Tuple of (parsed_dict or None, has_duplicates).
+        If parsing fails, returns (None, False).
+        If duplicates detected, returns (None, True).
+    """
+    seen_keys: set = set()
+    has_duplicates = False
+
+    def check_duplicates(pairs):
+        nonlocal has_duplicates
+        result = {}
+        for key, value in pairs:
+            if key in seen_keys:
+                has_duplicates = True
+            seen_keys.add(key)
+            result[key] = value
+        return result
+
+    try:
+        parsed = json.loads(text, object_pairs_hook=check_duplicates)
+        if has_duplicates:
+            return None, True
+        return parsed, False
+    except json.JSONDecodeError:
+        return None, False
 
 
 def _coerce_numeric(value: Any) -> Optional[float]:
@@ -30,26 +60,33 @@ def _coerce_numeric(value: Any) -> Optional[float]:
     return None
 
 
-def _parse_dict_like(data: Union[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Parse inputs that should represent dictionaries."""
+def _parse_dict_like(data: Union[str, Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """Parse inputs that should represent dictionaries.
+
+    Returns:
+        Tuple of (parsed_dict or None, has_duplicates).
+        has_duplicates is True if duplicate keys were detected.
+    """
     if isinstance(data, dict):
-        return dict(data)
+        return dict(data), False
 
     if isinstance(data, str):
         text = data.strip()
         if not text:
-            return {}
+            return {}, False
 
-        try:
-            parsed = json.loads(text)
-        except (json.JSONDecodeError, ValueError):
-            parsed = None
-
+        # Try JSON parsing with duplicate detection
+        parsed, has_json_duplicates = _parse_json_with_duplicate_check(text)
+        if has_json_duplicates:
+            return None, True
         if isinstance(parsed, dict):
-            return parsed
+            return parsed, False
 
         # Fallback: parse "key:value" pairs separated by comma/semicolon/newline
         result: Dict[str, Any] = {}
+        seen_keys: set = set()
+        has_duplicates = False
+
         for segment in re.split(r'[;,\n]', text):
             if ':' not in segment:
                 continue
@@ -57,21 +94,40 @@ def _parse_dict_like(data: Union[str, Dict[str, Any]]) -> Optional[Dict[str, Any
             key = key.strip()
             value = value.strip()
             if key:
+                if key in seen_keys:
+                    has_duplicates = True
+                seen_keys.add(key)
                 result[key] = value
 
+        if has_duplicates:
+            return None, True
+
         if result:
-            return result
+            return result, False
 
-    return None
+    return None, False
 
 
-def _normalize_count_dict(raw_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize dictionary keys using natural language mappings."""
+def _normalize_count_dict(raw_dict: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """Normalize dictionary keys using natural language mappings.
+
+    Returns:
+        Tuple of (normalized_dict or None, has_duplicates).
+        has_duplicates is True if different raw keys normalize to the same key.
+    """
     normalized: Dict[str, Any] = {}
+    seen_raw_keys: Dict[str, str] = {}  # normalized_key -> original raw key
+
     for key, value in raw_dict.items():
         normalized_key = parse_natural_language_property(str(key)).strip()
+
+        # Check for duplicate normalized keys from different raw keys
+        if normalized_key in seen_raw_keys and seen_raw_keys[normalized_key] != key:
+            return None, True  # Different raw keys normalize to same key
+        seen_raw_keys[normalized_key] = key
         normalized[normalized_key] = value
-    return normalized
+
+    return normalized, False
 
 
 def _values_match(target_value: Any, predicted_value: Any, property_name: str = "") -> bool:
@@ -100,57 +156,86 @@ def _values_match(target_value: Any, predicted_value: Any, property_name: str = 
     return str(target_value).strip() == str(predicted_value).strip()
 
 
-def _extract_single_count_value(predicted: Union[str, int, float, Dict], target_key: str) -> Optional[Any]:
-    """Extract or infer the value for a single-count prediction."""
+def _extract_single_count_value(
+    predicted: Union[str, int, float, Dict], target_key: str
+) -> Tuple[Optional[Any], bool]:
+    """Extract or infer the value for a single-count prediction.
+
+    Returns:
+        Tuple of (value or None, has_duplicates).
+        has_duplicates is True if duplicate keys were detected in the prediction.
+    """
     if isinstance(predicted, (int, float)) and not isinstance(predicted, bool):
-        return predicted
+        return predicted, False
 
     parsed: Optional[Dict[str, Any]] = None
+    has_duplicates = False
 
     if isinstance(predicted, str):
         # For molecular formula properties, treat the string as the value directly
         if 'molecular_formula' in target_key:
             # First try to parse as dict
-            parsed = _parse_dict_like(predicted)
+            parsed, has_duplicates = _parse_dict_like(predicted)
+            if has_duplicates:
+                return None, True
             if parsed is None:
                 # If not a dict, treat the string as the formula value
-                return predicted
+                return predicted, False
         else:
             numeric = _coerce_numeric(predicted)
             if numeric is not None:
-                return numeric
-            parsed = _parse_dict_like(predicted)
+                return numeric, False
+            parsed, has_duplicates = _parse_dict_like(predicted)
+            if has_duplicates:
+                return None, True
     elif isinstance(predicted, dict):
         parsed = dict(predicted)
 
     if parsed is None:
-        return None
+        return None, False
 
-    normalized_pred = _normalize_count_dict(parsed)
+    normalized_pred, norm_duplicates = _normalize_count_dict(parsed)
+    if norm_duplicates or normalized_pred is None:
+        return None, True
 
     if target_key in normalized_pred:
-        return normalized_pred[target_key]
+        return normalized_pred[target_key], False
 
     if len(normalized_pred) == 1:
-        return next(iter(normalized_pred.values()))
+        return next(iter(normalized_pred.values())), False
 
-    return None
+    return None, False
 
 
-def _parse_multi_count_prediction(predicted: Union[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Parse predictions for multi-count tasks into a normalized dictionary."""
+def _parse_multi_count_prediction(
+    predicted: Union[str, Dict[str, Any]]
+) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """Parse predictions for multi-count tasks into a normalized dictionary.
+
+    Returns:
+        Tuple of (normalized_dict or None, has_duplicates).
+        has_duplicates is True if duplicate keys were detected.
+    """
+    parsed: Optional[Dict[str, Any]] = None
+    has_duplicates = False
+
     if isinstance(predicted, dict):
         parsed = dict(predicted)
     elif isinstance(predicted, str):
-        parsed = _parse_dict_like(predicted)
+        parsed, has_duplicates = _parse_dict_like(predicted)
+        if has_duplicates:
+            return None, True
     else:
         parsed = None
 
     if parsed is None:
-        return None
+        return None, False
 
-    normalized = _normalize_count_dict(parsed)
-    return normalized if normalized else None
+    normalized, norm_duplicates = _normalize_count_dict(parsed)
+    if norm_duplicates or normalized is None:
+        return None, True
+
+    return (normalized if normalized else None), False
 
 
 def multi_count_dict_reward(
@@ -196,7 +281,7 @@ def multi_count_dict_reward(
         Union[float, Dict[str, Any]]: Either the binary reward or a detail
         dictionary (see above).
     """
-    target_dict_raw = _parse_dict_like(target)
+    target_dict_raw, _ = _parse_dict_like(target)
     if target_dict_raw is None:
         return 0.0 if not return_details else {
             "reward": 0.0,
@@ -206,7 +291,7 @@ def multi_count_dict_reward(
             "extra_predictions": {}
         }
 
-    norm_target = _normalize_count_dict(target_dict_raw)
+    norm_target, _ = _normalize_count_dict(target_dict_raw)
     if not norm_target:
         return 0.0 if not return_details else {
             "reward": 0.0,
@@ -219,7 +304,26 @@ def multi_count_dict_reward(
     # Single-count tasks
     if len(norm_target) == 1:
         target_key, target_value = next(iter(norm_target.items()))
-        pred_value = _extract_single_count_value(predicted, target_key)
+        pred_value, has_pred_duplicates = _extract_single_count_value(predicted, target_key)
+
+        # Duplicate keys in prediction - return 0
+        if has_pred_duplicates:
+            if return_details:
+                return {
+                    "reward": 0.0,
+                    "details": {
+                        target_key: {
+                            "target": target_value,
+                            "predicted": None,
+                            "match": False
+                        }
+                    },
+                    "matched": 0,
+                    "total": 1,
+                    "extra_predictions": {}
+                }
+            return 0.0
+
         match = False
         if pred_value is not None:
             match = _values_match(target_value, pred_value, target_key)
@@ -235,7 +339,7 @@ def multi_count_dict_reward(
                 }
             }
             # Capture extra predictions when dict-like input contains other keys
-            norm_pred = _parse_multi_count_prediction(predicted)
+            norm_pred, _ = _parse_multi_count_prediction(predicted)
             extra_predictions = {}
             if norm_pred:
                 for key, value in norm_pred.items():
@@ -253,7 +357,28 @@ def multi_count_dict_reward(
         return reward
 
     # Multi-count tasks
-    norm_pred = _parse_multi_count_prediction(predicted)
+    norm_pred, has_pred_duplicates = _parse_multi_count_prediction(predicted)
+
+    # Duplicate keys in prediction - return 0
+    if has_pred_duplicates:
+        if return_details:
+            details = {
+                key: {
+                    "target": value,
+                    "predicted": None,
+                    "match": False
+                }
+                for key, value in norm_target.items()
+            }
+            return {
+                "reward": 0.0,
+                "details": details,
+                "matched": 0,
+                "total": len(norm_target),
+                "extra_predictions": {}
+            }
+        return 0.0
+
     if not norm_pred:
         if return_details:
             details = {

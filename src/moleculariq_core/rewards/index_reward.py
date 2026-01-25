@@ -54,12 +54,25 @@ def parse_indices_string(s: str) -> Optional[List[int]]:
         return None
 
 
-def _normalize_index_dict(raw: Dict[str, Any]) -> Dict[str, List[int]]:
+def _normalize_index_dict(raw: Dict[str, Any]) -> Optional[Dict[str, List[int]]]:
+    """Normalize index dictionary keys.
+
+    Returns None if different raw keys normalize to the same canonical key
+    (duplicate detection).
+    """
     from .._nlp.mappings import parse_natural_language
 
     normalized: Dict[str, List[int]] = {}
+    seen_raw_keys: Dict[str, str] = {}  # normalized_key -> original raw key
+
     for key, indices in raw.items():
         normalized_key = canonicalize_property_name(parse_natural_language(key.lower()))
+
+        # Check for duplicate normalized keys from different raw keys
+        if normalized_key in seen_raw_keys and seen_raw_keys[normalized_key] != key:
+            return None  # Different raw keys normalize to same key
+        seen_raw_keys[normalized_key] = key
+
         if isinstance(indices, str):
             parsed = parse_indices_string(indices)
             if parsed is None:
@@ -128,6 +141,16 @@ def multi_index_identification_reward(
         }
 
     normalized_target_full = _normalize_index_dict(target)
+
+    # Target normalization failed (e.g., duplicates) - shouldn't happen but handle gracefully
+    if normalized_target_full is None:
+        return 0.0 if not return_details else {
+            "reward": 0.0,
+            "details": {},
+            "matched": 0,
+            "total": 0,
+            "extra_predictions": {}
+        }
 
     # Check if single index task (target has exactly one key)
     if len(normalized_target_full) == 1:
@@ -221,9 +244,10 @@ def multi_index_identification_reward(
             extra_predictions = {}
             if isinstance(predicted, dict) and len(predicted) > 1:
                 normalized = _normalize_index_dict(predicted)
-                for key, value in normalized.items():
-                    if key != target_key:
-                        extra_predictions[key] = value
+                if normalized is not None:
+                    for key, value in normalized.items():
+                        if key != target_key:
+                            extra_predictions[key] = value
 
             return {
                 "reward": reward,
@@ -285,9 +309,32 @@ def multi_index_identification_reward(
         key: set(value)
         for key, value in normalized_target_full.items()
     }
+
+    # Normalize prediction - check for duplicate keys
+    normalized_pred = _normalize_index_dict(pred_dict)
+    if normalized_pred is None:
+        # Duplicate keys detected in prediction - return 0
+        if return_details:
+            details = {
+                key: {
+                    "target": sorted(set(indices)) if isinstance(indices, list) else [],
+                    "predicted": None,
+                    "match": False
+                }
+                for key, indices in target.items()
+            }
+            return {
+                "reward": 0.0,
+                "details": details,
+                "matched": 0,
+                "total": len(details),
+                "extra_predictions": {}
+            }
+        return 0.0
+
     norm_pred = {
         key: set(value)
-        for key, value in _normalize_index_dict(pred_dict).items()
+        for key, value in normalized_pred.items()
     }
 
     if not norm_target:
@@ -317,7 +364,7 @@ def multi_index_identification_reward(
             "match": match
         }
 
-    reward = matched / len(norm_target) if len(norm_target) > 0 else 0.0
+    reward = 1.0 if matched == len(norm_target) else 0.0
 
     if return_details:
         extra_predictions = {

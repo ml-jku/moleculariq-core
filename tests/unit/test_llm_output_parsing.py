@@ -78,90 +78,109 @@ class TestCoerceNumeric:
 
 
 class TestParseDictLike:
-    """Tests for _parse_dict_like function."""
+    """Tests for _parse_dict_like function.
+
+    Note: _parse_dict_like returns a tuple (dict_or_none, has_duplicates).
+    """
 
     def test_dict_passthrough(self):
         """Dict passes through."""
-        result = _parse_dict_like({"a": 1})
+        result, has_duplicates = _parse_dict_like({"a": 1})
         assert result == {"a": 1}
+        assert not has_duplicates
 
     def test_valid_json_string(self):
         """Valid JSON string."""
-        result = _parse_dict_like('{"ring_count": 5}')
+        result, has_duplicates = _parse_dict_like('{"ring_count": 5}')
         assert result == {"ring_count": 5}
+        assert not has_duplicates
 
     def test_json_with_extra_whitespace(self):
         """JSON with extra whitespace."""
-        result = _parse_dict_like('  { "ring_count" : 5 }  ')
+        result, has_duplicates = _parse_dict_like('  { "ring_count" : 5 }  ')
         assert result == {"ring_count": 5}
+        assert not has_duplicates
 
     def test_colon_separated_format(self):
         """Colon-separated key:value format."""
-        result = _parse_dict_like("ring_count: 5")
+        result, has_duplicates = _parse_dict_like("ring_count: 5")
         assert result == {"ring_count": "5"}
+        assert not has_duplicates
 
     def test_multiple_colon_values(self):
         """Multiple colon-separated values."""
-        result = _parse_dict_like("ring_count: 5, carbon_count: 6")
+        result, has_duplicates = _parse_dict_like("ring_count: 5, carbon_count: 6")
         assert result == {"ring_count": "5", "carbon_count": "6"}
+        assert not has_duplicates
 
     def test_semicolon_separated(self):
         """Semicolon-separated values."""
-        result = _parse_dict_like("ring_count: 5; carbon_count: 6")
+        result, has_duplicates = _parse_dict_like("ring_count: 5; carbon_count: 6")
         assert result == {"ring_count": "5", "carbon_count": "6"}
+        assert not has_duplicates
 
     def test_newline_separated(self):
         """Newline-separated values."""
-        result = _parse_dict_like("ring_count: 5\ncarbon_count: 6")
+        result, has_duplicates = _parse_dict_like("ring_count: 5\ncarbon_count: 6")
         assert result == {"ring_count": "5", "carbon_count": "6"}
+        assert not has_duplicates
 
     def test_empty_string(self):
         """Empty string."""
-        result = _parse_dict_like("")
+        result, has_duplicates = _parse_dict_like("")
         assert result == {}
+        assert not has_duplicates
 
     def test_whitespace_only(self):
         """Whitespace only."""
-        result = _parse_dict_like("   ")
+        result, has_duplicates = _parse_dict_like("   ")
         assert result == {}
+        assert not has_duplicates
 
     def test_malformed_json(self):
         """Malformed JSON falls back to colon parsing."""
-        result = _parse_dict_like('{"ring_count": 5')  # Missing closing brace
+        result, has_duplicates = _parse_dict_like('{"ring_count": 5')  # Missing closing brace
         # Falls back to colon parsing - may extract key:value pairs
-        assert isinstance(result, dict)
+        assert isinstance(result, (dict, type(None)))
 
     def test_json_array_not_dict(self):
         """JSON array returns None (not a dict)."""
-        result = _parse_dict_like('[1, 2, 3]')
+        result, has_duplicates = _parse_dict_like('[1, 2, 3]')
         assert result is None
 
 
 class TestNormalizeCountDict:
-    """Tests for _normalize_count_dict function."""
+    """Tests for _normalize_count_dict function.
+
+    Note: _normalize_count_dict returns a tuple (dict_or_none, has_duplicates).
+    """
 
     def test_technical_keys_unchanged(self):
         """Technical keys pass through."""
-        result = _normalize_count_dict({"ring_count": 5})
+        result, has_duplicates = _normalize_count_dict({"ring_count": 5})
         assert "ring_count" in result
+        assert not has_duplicates
 
     def test_natural_language_keys(self):
         """Natural language keys get normalized."""
-        result = _normalize_count_dict({"number of rings": 5})
+        result, has_duplicates = _normalize_count_dict({"number of rings": 5})
         # Should normalize to technical key
         assert isinstance(result, dict)
         assert len(result) == 1
+        assert not has_duplicates
 
     def test_mixed_case_keys(self):
         """Mixed case keys."""
-        result = _normalize_count_dict({"Ring_Count": 5})
+        result, has_duplicates = _normalize_count_dict({"Ring_Count": 5})
         assert isinstance(result, dict)
+        assert not has_duplicates
 
     def test_preserves_values(self):
         """Values preserved during normalization."""
-        result = _normalize_count_dict({"ring_count": 5})
+        result, has_duplicates = _normalize_count_dict({"ring_count": 5})
         values = list(result.values())
         assert 5 in values
+        assert not has_duplicates
 
 
 class TestParseIndicesString:
